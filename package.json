@@ -29,6 +29,7 @@
     "twilio": "^5.2.2",
     "vcards-js": "^2.10.0",
     "zzzql": "1.2.2",
-    "node-fetch": "^2.6.1"
+    "node-fetch": "^2.6.1",
+    "string-similarity": "^4.0.4"
   }
 }

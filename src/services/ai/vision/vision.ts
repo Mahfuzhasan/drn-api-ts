@@ -2,8 +2,49 @@ import { ImageAnnotatorClient } from "@google-cloud/vision";
 import credentials from "./credentials.json";
 import fetch from 'node-fetch';
 import colorName from "color-namer";
+import stringSimilarity from 'string-similarity';  // Import for fuzzy matching
 
 const imgAnnotator = new ImageAnnotatorClient({ credentials });
+
+// Corrected confused character map for common OCR errors
+const confusedCharacterMap = {
+    'l': 'i',  // 'l' and 'i' confusion
+    '0': 'O',  // '0' and 'O' confusion
+    '1': 'l',  // '1' and 'l' confusion
+    '5': 'S',  // '5' and 'S' confusion
+    '8': 'B',  // '8' and 'B' confusion
+    '2': 'Z',  // '2' and 'Z' confusion
+    '6': 'G',  // '6' and 'G' confusion
+    '9': 'g',  // '9' and 'g' confusion
+    '3': 'E',  // '3' and 'E' confusion
+    '4': 'A',  // '4' and 'A' confusion
+    '7': 'T',  // '7' and 'T' confusion
+    'C': 'G',  // 'C' and 'G' confusion
+    'D': 'O',  // 'D' and 'O' confusion
+    'K': 'X',  // 'K' and 'X' confusion
+    'P': 'R',  // 'P' and 'R' confusion
+    'Q': 'O',  // 'Q' and 'O' confusion
+
+    // Special characters
+    '!': '1',  // '!' and '1' confusion
+    '|': 'I',  // '|' and 'I' confusion
+    '$': '5',  // '$' and '5' confusion
+    '@': 'a',  // '@' and 'a' confusion
+    '%': '5',  // '%' and '5' confusion
+    '&': '8',  // '&' and '8' confusion
+    '(': 'C',  // '(' and 'C' confusion
+    ')': 'D',  // ')' and 'D' confusion
+
+    // Uppercase-lowercase confusion
+    'I': '1',  // 'I' and '1' confusion
+    'Z': 'S',  // 'Z' and 'S' confusion
+    'V': 'U',  // 'V' and 'U' confusion
+};
+
+// Function to dynamically replace confused characters
+const correctCommonOcrMistakes = (word) => {
+    return word.split('').map(char => confusedCharacterMap[char] || char).join('');
+};
 
 // Function to map color to primary color
 const mapToPrimaryColor = (color) => {
@@ -20,10 +61,10 @@ const mapToPrimaryColor = (color) => {
     return "Unknown";
 };
 
-// Function to validate if text is a phone number
-const isPhoneNumber = (text) => {
-    const phonePattern = /(\(\d{3}\)\s?\d{3}-\d{4})|(\d{3}-\d{3}-\d{4})/;
-    return phonePattern.test(text);
+// Function to validate if a combined text is a phone number
+const isPhoneNumber = (combinedText) => {
+    const phonePattern = /^1?\s?(\d{3})[-\s]?(\d{3})[-\s]?(\d{4})$/; // Handles optional '1', spaces, and dashes
+    return phonePattern.test(combinedText);
 };
 
 // Fetch brands and discs data from the API
@@ -50,27 +91,70 @@ const normalizeWord = (word) => {
     return word.trim().toLowerCase().replace(/[^a-z0-9.]/gi, '');
 };
 
+// Function to perform fuzzy matching
+const findClosestMatch = (word, wordList) => {
+    // Apply character substitution for common OCR mistakes
+    const correctedWord = correctCommonOcrMistakes(word);
+
+    const matches = stringSimilarity.findBestMatch(correctedWord, wordList);
+    if (matches.bestMatch.rating >= 0.75) { // Set threshold for fuzzy matching
+        return matches.bestMatch.target;
+    }
+    return null;
+};
+
 // Function to categorize text into Brand, Disc, or Phone Number
 const categorizeText = async (textData) => {
     const { brands, discs } = await fetchBrandsAndDiscs();
 
-    return textData.map((wordData) => {
+    let combinedNumber = "";
+    let categorizedWords = [];
+
+    for (let i = 0; i < textData.length; i++) {
+        const wordData = textData[i];
         const normalizedWord = normalizeWord(wordData.word);
         console.log(`Checking word: ${normalizedWord}`); // Diagnostic log
 
-        if (isPhoneNumber(normalizedWord)) {
-            console.log(`${normalizedWord} is a Phone Number`);
-            return { ...wordData, category: "Phone Number" };
-        } else if (brands.includes(normalizedWord)) {
-            console.log(`${normalizedWord} is a Brand`);
-            return { ...wordData, category: "Brand" };
-        } else if (discs.includes(normalizedWord)) {
-            console.log(`${normalizedWord} is a Disc`);
-            return { ...wordData, category: "Disc" };
+        // If the word contains only digits, append it to combinedNumber
+        if (/^\d+$/.test(normalizedWord)) {
+            combinedNumber += normalizedWord;
+            console.log(`Accumulated number: ${combinedNumber}`);
+
+            // If the combined number looks like a phone number, categorize it
+            if (isPhoneNumber(combinedNumber)) {
+                console.log(`${combinedNumber} is a Phone Number`);
+                categorizedWords.push({ ...wordData, word: combinedNumber, category: "Phone Number" });
+                combinedNumber = ""; // Reset for the next possible phone number
+            }
         } else {
-            return { ...wordData, category: "N/A" }; // Default category if not matched
+            // If combinedNumber has accumulated and is a valid phone number, add it to results
+            if (combinedNumber && isPhoneNumber(combinedNumber)) {
+                categorizedWords.push({ word: combinedNumber, category: "Phone Number" });
+                combinedNumber = ""; // Reset for the next possible phone number
+            }
+
+            // Perform fuzzy matching on brands and discs
+            const closestBrand = findClosestMatch(normalizedWord, brands);
+            const closestDisc = findClosestMatch(normalizedWord, discs);
+
+            if (closestBrand) {
+                console.log(`${normalizedWord} is fuzzy matched to Brand: ${closestBrand}`);
+                categorizedWords.push({ ...wordData, word: closestBrand, category: "Brand" });
+            } else if (closestDisc) {
+                console.log(`${normalizedWord} is fuzzy matched to Disc: ${closestDisc}`);
+                categorizedWords.push({ ...wordData, word: closestDisc, category: "Disc" });
+            } else {
+                categorizedWords.push({ ...wordData, category: "N/A" });
+            }
         }
-    });
+    }
+
+    // If there's still an unprocessed combined number at the end, check it
+    if (combinedNumber && isPhoneNumber(combinedNumber)) {
+        categorizedWords.push({ word: combinedNumber, category: "Phone Number" });
+    }
+
+    return categorizedWords;
 };
 
 // Main function to process the image
