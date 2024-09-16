@@ -7,7 +7,7 @@ export type ImageDetectionData = {
 export type TextData = {
   confidence: number;
   words: {
-    word: string;
     confidence: number;
+    category?: string; // Added category here
   }[];
 };

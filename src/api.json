@@ -1397,49 +1397,36 @@
           }
         }
       },
-      "VisionResponseWords": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["confidence", "word"],
-        "properties": {
-          "confidence": {
-            "type": "number"
-          },
-          "word": {
-            "type": "string"
-          }
-        }
+     "VisionResponseWords": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["confidence", "word", "category"],
+    "properties": {
+      "confidence": {
+        "type": "number"
       },
-      "VisionResponseColors": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["color", "name", "score", "pixelFraction"],
-        "properties": {
-          "color": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["red", "green", "blue", "alpha"],
-            "properties": {
-              "red": {
-                "type": "number"
-              },
-              "green": {
-                "type": "number"
-              },
-              "blue": {
-                "type": "number"
-              },
-              "alpha": {
-                "type": "number",
-                "nullable": true
-              }
-            }
-          },
-          "name": { "type": "string" },
-          "score": { "type": "number" },
-          "pixelFraction": { "type": "number" }
-        }
+      "word": {
+        "type": "string"
+      },
+      "category": {
+        "type": "string"
       }
     }
+  },
+  "VisionResponseColors": {
+    "type": "object",
+    "required": ["primary", "score"],
+    "properties": {
+      "primary": {
+        "type": "string",
+        "description": "Primary color detected"
+      },
+      "score": {
+        "type": "number",
+        "description": "Confidence score for the primary color detection"
+     }
+    }
+   }
   }
+ }
 }
